@@ -24,9 +24,11 @@ export class BallTracker {
    */
   constructor(opts = {}) {
     this.threshold = opts.threshold ?? 22;
-    this.ballColor = opts.ballColor ?? null;
+    this.ballColor = opts.ballColor ?? null;   // learned ball colour (from tap)
+    this.bgColor = opts.bgColor ?? null;       // learned background (grass) colour
     this.colorHint = opts.colorHint ?? 'auto';
     this.searchRadius = opts.searchRadius ?? 0.16;
+    this.corridorHalf = opts.corridorHalf ?? 0.14; // launch-corridor half width
     this.shakeRange = opts.shakeRange ?? 6;
     this.frames = []; // [{ t, energy, blobs:[{x,y,area,aspect,r,g,b}] }]
     this.prevGray = null;
@@ -68,7 +70,7 @@ export class BallTracker {
         if (Math.abs(gray[i] - pv) > T) {
           energy++;
           const p4 = i * 4;
-          if (isBallPixel(data[p4], data[p4 + 1], data[p4 + 2], this.ballColor, this.colorHint)) {
+          if (isBallPixel(data[p4], data[p4 + 1], data[p4 + 2], this.ballColor, this.bgColor, this.colorHint)) {
             mask[i] = 1;
           }
         }
@@ -135,8 +137,15 @@ export class BallTracker {
 
   /**
    * resolve the observed frames into a clean trajectory.
-   * @param {{seed:?{x,y,t,color}}} opts  seed = tapped ball (launch) point.
-   * @returns {{x,y,t}[]} fitted trajectory points (normalized).
+   *
+   * Strategy (inspired by Smooth Swing's setup guide): the ball leaves a known
+   * point (the tapped launch position) and travels in a known direction (the
+   * tapped aim point, or straight up by default). We therefore only look inside
+   * a forward "corridor" from the launch point — this excludes the grass at the
+   * bottom, the golfer's body to the side, and the club's downswing.
+   *
+   * @param {{seed:?{x,y,t,color,bg,aim}}} opts
+   * @returns {{points,impactT,raw}}
    */
   resolve(opts = {}) {
     const seed = opts.seed || null;
@@ -150,10 +159,10 @@ export class BallTracker {
       if (frames[i].energy > maxE) { maxE = frames[i].energy; impactIdx = i; }
     }
     const impactT = frames[impactIdx].t;
-
-    // 2. launch position: the tapped ball, or the first post-impact blob
-    let launch = seed ? { x: seed.x, y: seed.y } : null;
     const post = frames.filter((f) => f.t >= impactT - 1e-6);
+
+    // 2. launch point + launch direction
+    let launch = seed ? { x: seed.x, y: seed.y } : null;
     if (!launch) {
       for (const f of post.slice(0, 5)) {
         if (f.blobs.length) { launch = { x: f.blobs[0].x, y: f.blobs[0].y }; break; }
@@ -161,37 +170,56 @@ export class BallTracker {
     }
     if (!launch) return { points: [], impactT, raw: [] };
 
-    // 3. greedily chain detections that move away from the launch point
+    let D = { x: 0, y: -1 }; // default: ball flies up the frame
+    if (seed && seed.aim) {
+      const dx = seed.aim.x - seed.x, dy = seed.aim.y - seed.y;
+      const n = Math.hypot(dx, dy) || 1;
+      D = { x: dx / n, y: dy / n };
+    }
+
+    // forward-corridor test (a cone that widens with distance from launch)
+    const half = this.corridorHalf;
+    const inCorridor = (b) => {
+      const rx = b.x - launch.x, ry = b.y - launch.y;
+      const along = rx * D.x + ry * D.y;
+      if (along <= 0.005) return false;            // must be ahead of the launch
+      const perp = Math.abs(rx * -D.y + ry * D.x); // distance from the aim line
+      return perp <= half * (1 + along * 1.2);
+    };
+
+    // 3. greedily chain corridor detections that keep moving outward
     const ballColor = this.ballColor;
+    const bgColor = this.bgColor;
+    const baseR = this.searchRadius;
     let lastPos = { ...launch };
     let vel = null;
-    let lastDist = 0;
+    let lastAlong = 0;
     let lost = 0;
-    const baseR = this.searchRadius;
     const chain = [{ x: launch.x, y: launch.y, t: impactT }];
 
     for (const f of post) {
       if (f.t <= impactT) continue;
       const predicted = vel
         ? { x: lastPos.x + vel.x, y: lastPos.y + vel.y }
-        : { ...lastPos };
+        : { x: lastPos.x + D.x * 0.02, y: lastPos.y + D.y * 0.02 };
       const R = baseR * (1 + lost * 0.7);
 
       let best = null, bestScore = Infinity;
       for (const b of f.blobs) {
+        if (!inCorridor(b)) continue;
+        const along = (b.x - launch.x) * D.x + (b.y - launch.y) * D.y;
+        if (vel && along < lastAlong - 0.02) continue; // keep travelling outward
         const dist = Math.hypot(b.x - predicted.x, b.y - predicted.y);
         if (dist > R) continue;
-        const distFromLaunch = Math.hypot(b.x - launch.x, b.y - launch.y);
-        if (vel && distFromLaunch < lastDist - 0.02) continue; // must travel outward
         let score = dist;
         if (ballColor) score += colorDist(b, ballColor) / 255 * 0.25;
-        score += Math.max(0, b.area - 40) * 0.0005; // mild small-blob preference
+        if (bgColor) score += Math.max(0, 60 - colorDist(b, bgColor)) / 60 * 0.6;
         if (score < bestScore) { bestScore = score; best = b; }
       }
 
       if (best) {
         vel = { x: best.x - lastPos.x, y: best.y - lastPos.y };
-        lastDist = Math.hypot(best.x - launch.x, best.y - launch.y);
+        lastAlong = (best.x - launch.x) * D.x + (best.y - launch.y) * D.y;
         lastPos = { x: best.x, y: best.y };
         lost = 0;
         chain.push({ x: best.x, y: best.y, t: f.t });
@@ -213,28 +241,29 @@ export class BallTracker {
 
 // ---- ball-colour classification --------------------------------------------
 
-function isBallPixel(r, g, b, ballColor, hint) {
+function isBallPixel(r, g, b, ballColor, bgColor, hint) {
+  // reject pixels that look like the learned background (grass/turf)
+  if (bgColor && Math.hypot(r - bgColor.r, g - bgColor.g, b - bgColor.b) < 55) return false;
+
+  // when we know the ball's colour, trust it exclusively (tight match).
+  // this is what keeps green grass from being mistaken for the ball.
+  if (ballColor) {
+    return Math.hypot(r - ballColor.r, g - ballColor.g, b - ballColor.b) < 90;
+  }
+
   const mx = Math.max(r, g, b);
   const mn = Math.min(r, g, b);
   const luma = r * 0.299 + g * 0.587 + b * 0.114;
   const sat = mx <= 0 ? 0 : (mx - mn) / mx;
-
-  // learned colour from the user's tap (allow some drift for motion blur)
-  if (ballColor) {
-    if (Math.hypot(r - ballColor.r, g - ballColor.g, b - ballColor.b) < 130) return true;
-  }
-
   switch (hint) {
     case 'white':
-      return luma > 165 && sat < 0.25;
+      return luma > 185 && sat < 0.18;
     case 'yellow':
-      return r > 150 && g > 130 && b < 150 && sat > 0.28;
+      return r > 170 && g > 150 && b < 120 && sat > 0.35;
     case 'orange':
-      return r > 160 && g > 70 && g < 200 && b < 120 && sat > 0.40;
-    default: // auto: bright white OR vivid colour (yellow/orange/etc.)
-      if (luma > 175 && sat < 0.22) return true;
-      if (sat > 0.45 && luma > 90 && luma < 245) return true;
-      return false;
+      return r > 185 && g > 90 && g < 190 && b < 100 && sat > 0.50;
+    default: // auto: only very bright white (avoid grabbing coloured grass)
+      return luma > 205 && sat < 0.15;
   }
 }
 

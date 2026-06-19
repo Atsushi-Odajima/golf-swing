@@ -41,8 +41,8 @@ const exportCanvas = document.createElement('canvas');
 // ---- state ----
 let tracker = null;
 let trajectory = [];      // cleaned points [{x,y,t}]
-let seed = null;          // { x, y, t, color:{r,g,b} } ball launch point
-let tapMode = false;
+let seed = null;          // { x, y, t, color, bg, aim } ball launch point + direction
+let tapStage = 'idle';    // 'idle' | 'ball' | 'aim'
 let analyzed = false;
 let lastBlob = null;
 let lastFilename = 'golf-trajectory.mp4';
@@ -66,19 +66,41 @@ function sizeCanvases() {
   procCanvas.height = Math.round(h * scale);
 }
 
-// average colour of a small patch around a normalized point, from the
-// current video frame (used to learn the ball colour on tap).
-function sampleColor(nx, ny) {
-  const w = procCanvas.width, h = procCanvas.height;
-  pctx.drawImage(video, 0, 0, w, h);
-  const px = Math.round(nx * w), py = Math.round(ny * h);
-  const r = 2;
+// average colour of a small patch (radius r) of the current frame.
+function avgPatch(px, py, r, w, h) {
   const x0 = Math.max(0, px - r), y0 = Math.max(0, py - r);
   const sw = Math.min(w - x0, 2 * r + 1), sh = Math.min(h - y0, 2 * r + 1);
+  if (sw <= 0 || sh <= 0) return null;
   const d = pctx.getImageData(x0, y0, sw, sh).data;
   let R = 0, G = 0, B = 0, c = 0;
   for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; c++; }
   return c ? { r: R / c, g: G / c, b: B / c } : null;
+}
+
+// learn the ball colour (centre patch) and the surrounding background/grass
+// colour (a ring around the tap), from the current video frame.
+function learnColors(nx, ny) {
+  const w = procCanvas.width, h = procCanvas.height;
+  pctx.drawImage(video, 0, 0, w, h);
+  const cx = Math.round(nx * w), cy = Math.round(ny * h);
+  const ball = avgPatch(cx, cy, 2, w, h);
+  const rr = Math.max(4, Math.round(w * 0.035));
+  const ring = [
+    avgPatch(cx - rr, cy, 1, w, h), avgPatch(cx + rr, cy, 1, w, h),
+    avgPatch(cx, cy - rr, 1, w, h), avgPatch(cx, cy + rr, 1, w, h),
+  ].filter(Boolean);
+  let R = 0, G = 0, B = 0;
+  for (const s of ring) { R += s.r; G += s.g; B += s.b; }
+  const bg = ring.length ? { r: R / ring.length, g: G / ring.length, b: B / ring.length } : null;
+  return { ball, bg };
+}
+
+function setTapHint(text) {
+  tapHint.textContent = text;
+  tapHint.classList.remove('hidden');
+}
+function hideTapHint() {
+  tapHint.classList.add('hidden');
 }
 
 // draw trajectory (+ seed marker). uptoTime limits drawing to the growing arc.
@@ -94,6 +116,7 @@ function drawOverlay(ctx, uptoTime = null) {
     ctx.beginPath();
     ctx.arc(seed.x * w, seed.y * h, w * 0.018, 0, Math.PI * 2);
     ctx.stroke();
+    if (seed.aim) drawArrow(ctx, seed.x * w, seed.y * h, seed.aim.x * w, seed.aim.y * h, w);
     ctx.restore();
   }
 
@@ -137,6 +160,29 @@ function strokePath(ctx, pts, w, h) {
   ctx.stroke();
 }
 
+// dashed aim arrow from the ball toward the tapped launch direction.
+function drawArrow(ctx, x0, y0, x1, y1, w) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,210,74,0.85)';
+  ctx.fillStyle = 'rgba(255,210,74,0.85)';
+  ctx.lineWidth = Math.max(2, w * 0.005);
+  ctx.setLineDash([w * 0.02, w * 0.015]);
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const ang = Math.atan2(y1 - y0, x1 - x0);
+  const head = w * 0.03;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - head * Math.cos(ang - 0.4), y1 - head * Math.sin(ang - 0.4));
+  ctx.lineTo(x1 - head * Math.cos(ang + 0.4), y1 - head * Math.sin(ang + 0.4));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawBall(ctx, x, y, w) {
   ctx.save();
   ctx.shadowBlur = 0;
@@ -170,7 +216,7 @@ function resetForNewVideo() {
   seed = null;
   analyzed = false;
   lastBlob = null;
-  tapMode = false;
+  tapStage = 'idle';
   btnTap.classList.remove('active');
   tapHint.classList.add('hidden');
   btnClearSeed.classList.add('hidden');
@@ -199,29 +245,46 @@ video.addEventListener('timeupdate', () => {
 });
 video.addEventListener('seeked', redraw);
 
-// ---- tap to set the ball (launch position + time + colour) ----
+// ---- two-tap setup: ball position (+colour), then launch direction ----
 btnTap.addEventListener('click', () => {
   if (analyzed) return;
-  tapMode = !tapMode;
-  btnTap.classList.toggle('active', tapMode);
-  tapHint.classList.toggle('hidden', !tapMode);
+  if (tapStage === 'idle') {
+    tapStage = 'ball';
+    btnTap.classList.add('active');
+    setTapHint('① 止まっているボールをタップ');
+  } else {
+    tapStage = 'idle';
+    btnTap.classList.remove('active');
+    hideTapHint();
+  }
 });
 
 overlay.addEventListener('pointerdown', (e) => {
-  if (!tapMode) return;
+  if (tapStage === 'idle' || analyzed) return;
   const rect = overlay.getBoundingClientRect();
   const x = (e.clientX - rect.left) / rect.width;
   const y = (e.clientY - rect.top) / rect.height;
-  seed = { x, y, t: video.currentTime, color: sampleColor(x, y) };
-  tapMode = false;
-  btnTap.classList.remove('active');
-  tapHint.classList.add('hidden');
-  btnClearSeed.classList.remove('hidden');
+
+  if (tapStage === 'ball') {
+    const c = learnColors(x, y);
+    seed = { x, y, t: video.currentTime, color: c.ball, bg: c.bg, aim: null };
+    tapStage = 'aim';
+    setTapHint('② ボールが飛んだ方向をタップ（おおよそでOK）');
+    btnClearSeed.classList.remove('hidden');
+  } else if (tapStage === 'aim') {
+    if (seed) seed.aim = { x, y };
+    tapStage = 'idle';
+    btnTap.classList.remove('active');
+    hideTapHint();
+  }
   redraw();
 });
 
 btnClearSeed.addEventListener('click', () => {
   seed = null;
+  tapStage = 'idle';
+  btnTap.classList.remove('active');
+  hideTapHint();
   btnClearSeed.classList.add('hidden');
   redraw();
 });
@@ -291,6 +354,7 @@ btnAnalyze.addEventListener('click', async () => {
   tracker = new BallTracker({
     threshold: Number(sensitivity.value),
     ballColor: seed ? seed.color : null,
+    bgColor: seed ? seed.bg : null,
     colorHint: ballColorSel ? ballColorSel.value : 'auto',
   });
 
