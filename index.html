@@ -57,23 +57,33 @@
 
       <!-- STEP 2: ボール位置の指定 -->
       <div class="control-block">
-        <h2><span class="step-no">2</span> ボールの位置を指定（任意・推奨）</h2>
+        <h2><span class="step-no">2</span> ボールの位置を指定（強く推奨）</h2>
         <p class="hint">
-          スライダーでインパクト直後あたりまで進め、<strong>ボールをタップ</strong>して開始位置を教えると精度が上がります。指定しなくても自動検出を試みます。
+          スライダーで<strong>インパクト直前（アドレス）</strong>まで進め、<strong>静止しているボールをタップ</strong>してください。
+          開始位置に加えて<strong>ボールの色も学習</strong>するので、検出精度が大きく上がります。
         </p>
         <div class="btn-row">
-          <button id="btn-tap" class="btn btn-secondary">🎯 ボール位置をタップで指定</button>
+          <button id="btn-tap" class="btn btn-secondary">🎯 ボールをタップで指定</button>
           <button id="btn-clear-seed" class="btn btn-ghost hidden">指定を消す</button>
         </div>
+        <label class="slider-label" style="margin-top:12px">
+          ボールの色
+          <select id="ball-color">
+            <option value="auto">自動</option>
+            <option value="white">白</option>
+            <option value="yellow">黄色</option>
+            <option value="orange">オレンジ</option>
+          </select>
+        </label>
       </div>
 
       <!-- STEP 3: 解析設定 -->
       <div class="control-block">
         <h2><span class="step-no">3</span> 感度を調整して解析</h2>
         <label class="slider-label">
-          検出感度（動きの閾値）
-          <input type="range" id="sensitivity" min="10" max="60" value="28" />
-          <span id="sensitivity-val">28</span>
+          検出感度（動きの閾値・小さいほど敏感）
+          <input type="range" id="sensitivity" min="10" max="50" value="22" />
+          <span id="sensitivity-val">22</span>
         </label>
         <div class="btn-row">
           <button id="btn-analyze" class="btn btn-primary">🔍 解析して軌道を描く</button>
