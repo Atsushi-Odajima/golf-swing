@@ -1,0 +1,193 @@
+:root {
+  --green-deep: #0b3d2e;
+  --green: #15805a;
+  --green-light: #1fae79;
+  --bg: #0f1411;
+  --card: #18211c;
+  --text: #eaf2ed;
+  --muted: #9fb3a9;
+  --accent: #ffd24a;
+  --danger: #e0524a;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+    "Segoe UI", Roboto, sans-serif;
+  line-height: 1.6;
+  -webkit-text-size-adjust: 100%;
+}
+
+.app-header {
+  text-align: center;
+  padding: 24px 16px 8px;
+  background: linear-gradient(160deg, var(--green-deep), #0a2a20);
+}
+.app-header h1 { margin: 0; font-size: 1.5rem; }
+.subtitle { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+h2 {
+  font-size: 1.05rem;
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  font-size: 0.85rem;
+  flex: 0 0 auto;
+}
+
+.hint { color: var(--muted); font-size: 0.85rem; margin: 4px 0 12px; }
+.hint strong { color: var(--text); }
+
+/* File button */
+.file-btn {
+  display: inline-block;
+  background: var(--green);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.file-btn:hover { background: var(--green-light); }
+.file-btn input { display: none; }
+.filename { font-size: 0.85rem; color: var(--muted); margin: 10px 0 0; word-break: break-all; }
+
+/* Stage */
+.stage {
+  position: relative;
+  width: 100%;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+  line-height: 0;
+}
+.stage video { width: 100%; height: auto; display: block; }
+.stage canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.tap-hint {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 210, 74, 0.95);
+  color: #1a1a1a;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.scrubber { margin: 12px 0; }
+.scrubber input[type="range"] { width: 100%; }
+
+.control-block {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.slider-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.slider-label input[type="range"] { flex: 1; min-width: 140px; }
+#sensitivity-val { min-width: 2ch; color: var(--text); font-weight: 600; }
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  transition: filter 0.15s, background 0.15s;
+}
+.btn:active { filter: brightness(0.9); }
+.btn-primary { background: var(--accent); color: #1a1a1a; }
+.btn-secondary { background: var(--green); color: #fff; }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid rgba(255,255,255,0.15); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn.active { outline: 3px solid var(--accent); }
+
+.progress {
+  margin-top: 12px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  width: 0;
+  background: var(--green-light);
+  transition: width 0.1s linear;
+}
+
+.status { font-size: 0.85rem; color: var(--muted); margin: 10px 0 0; min-height: 1.2em; }
+.status.error { color: var(--danger); }
+.status.ok { color: var(--green-light); }
+
+.notes ul { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 0.85rem; }
+.notes li { margin-bottom: 6px; }
+.notes strong { color: var(--text); }
+
+.app-footer {
+  text-align: center;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.hidden { display: none !important; }
