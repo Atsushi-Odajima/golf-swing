@@ -1,5 +1,6 @@
 import { BallTracker } from './tracker.js';
 import { exportVideo, fileExtFor } from './exporter.js';
+import { detectImpact, poseAvailable } from './pose.js';
 
 // ---- element refs ----
 const $ = (id) => document.getElementById(id);
@@ -349,35 +350,54 @@ btnAnalyze.addEventListener('click', async () => {
   resultBlock.classList.add('hidden');
   progress.classList.remove('hidden');
   progressBar.style.width = '0%';
-  setStatus('解析中… 手ブレ補正とボール検出をしています');
-
-  tracker = new BallTracker({
-    threshold: Number(sensitivity.value),
-    ballColor: seed ? seed.color : null,
-    bgColor: seed ? seed.bg : null,
-    colorHint: ballColorSel ? ballColorSel.value : 'auto',
-  });
 
   const pw = procCanvas.width;
   const ph = procCanvas.height;
   const duration = video.duration;
 
   try {
+    // 1. AI auto-setup: if the user didn't tap, use pose detection to find the
+    //    golfer, the impact moment and the launch (hand) position automatically.
+    let activeSeed = seed;
+    let usedAI = false;
+    if (!activeSeed && poseAvailable()) {
+      setStatus('AIでゴルファーとインパクトを自動検出中…');
+      try {
+        const det = await detectImpact(video, procCanvas, {
+          onProgress: (p) => { progressBar.style.width = (p * 50).toFixed(0) + '%'; },
+        });
+        if (det) {
+          activeSeed = { x: det.launch.x, y: det.launch.y, t: det.impactT, color: null, bg: null, aim: null };
+          usedAI = true;
+        }
+      } catch (_e) { /* fall back below */ }
+    }
+
+    // 2. dense motion scan (shake compensation + ball blobs)
+    setStatus(usedAI ? 'AIで検出した打点をもとに軌道を解析中…' : '解析中… 手ブレ補正とボール検出をしています');
+    tracker = new BallTracker({
+      threshold: Number(sensitivity.value),
+      ballColor: activeSeed ? activeSeed.color : null,
+      bgColor: activeSeed ? activeSeed.bg : null,
+      colorHint: ballColorSel ? ballColorSel.value : 'auto',
+    });
+
     await scanFrames((t) => {
       pctx.drawImage(video, 0, 0, pw, ph);
       const frame = pctx.getImageData(0, 0, pw, ph);
       tracker.observe(frame, t);
-      if (duration) progressBar.style.width = Math.min(100, (t / duration) * 100) + '%';
+      if (duration) progressBar.style.width = (50 + Math.min(50, (t / duration) * 50)).toFixed(0) + '%';
     });
 
-    const result = tracker.resolve({ seed });
+    const result = tracker.resolve({ seed: activeSeed });
     trajectory = result.points;
     progressBar.style.width = '100%';
 
     if (trajectory.length >= 2) {
       analyzed = true;
+      const how = usedAI ? 'AI自動検出' : (activeSeed ? '手動指定' : '自動');
       const impactMsg = result.impactT != null
-        ? `（インパクト検出: ${result.impactT.toFixed(2)}秒, 検出点 ${result.raw.length}）`
+        ? `（${how} / インパクト ${result.impactT.toFixed(2)}秒 / 検出点 ${result.raw.length}）`
         : '';
       setStatus(`軌道を描きました ${impactMsg}。再生・書き出しできます。`, 'ok');
       exportBlock.classList.remove('hidden');
@@ -385,8 +405,8 @@ btnAnalyze.addEventListener('click', async () => {
       redraw();
     } else {
       setStatus(
-        'ボールの軌道を十分に検出できませんでした。コツ: ①インパクト直前までスライダーで進めて' +
-        'ボールをタップ ②ボールの色を指定 ③感度を調整 ④できればスロー撮影。再度お試しください。',
+        'ボールの軌道を十分に検出できませんでした。コツ: ①できれば240fpsスロー撮影 ' +
+        '②ボールの色を指定 ③感度を調整 ④必要なら手動でボールと方向をタップ。再度お試しください。',
         'error'
       );
     }

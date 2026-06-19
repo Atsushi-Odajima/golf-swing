@@ -57,14 +57,14 @@
 
       <!-- STEP 2: ボール位置の指定 -->
       <div class="control-block">
-        <h2><span class="step-no">2</span> ボールと飛ぶ方向を指定（強く推奨）</h2>
+        <h2><span class="step-no">2</span> 解析（AIが自動でゴルファーを検出）</h2>
         <p class="hint">
-          スライダーで<strong>アドレス（インパクト直前）</strong>まで進め、ボタンを押してから<br />
-          <strong>①止まっているボールをタップ → ②ボールが飛んだ方向をタップ</strong>の順に2回タップしてください。<br />
-          開始位置・色・飛球方向を学習し、<strong>その方向の帯（コリドー）内だけ</strong>を探索するので精度が大きく上がります。
+          基本は <strong>そのまま「解析」を押すだけ</strong>です。
+          AI（姿勢検出）が<strong>ゴルファーとインパクトの瞬間・位置を自動で検出</strong>します。<br />
+          うまく出ないときだけ、手動で<strong>①ボールをタップ → ②飛んだ方向をタップ</strong>すると、その情報を優先します（任意）。
         </p>
         <div class="btn-row">
-          <button id="btn-tap" class="btn btn-secondary">🎯 ボールと方向をタップ</button>
+          <button id="btn-tap" class="btn btn-secondary">🎯 手動でボールと方向をタップ（任意）</button>
           <button id="btn-clear-seed" class="btn btn-ghost hidden">指定を消す</button>
         </div>
         <label class="slider-label" style="margin-top:12px">
@@ -129,6 +129,9 @@
     <p>すべての処理は端末のブラウザ内で行われます。</p>
   </footer>
 
+  <!-- in-browser AI: TensorFlow.js + MoveNet pose detection (auto impact/launch) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
