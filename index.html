@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b3d2e" />
+  <title>ゴルフ弾道トラッカー</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>⛳ ゴルフ弾道トラッカー</h1>
+    <p class="subtitle">ティーショットの動画から、ボールの軌道ラインを描きます</p>
+  </header>
+
+  <main class="container">
+    <!-- STEP 1: 動画選択 -->
+    <section class="card" id="step-load">
+      <h2><span class="step-no">1</span> 動画を選ぶ</h2>
+      <p class="hint">
+        飛球方向の<strong>後ろ（打者の背後）</strong>から撮った動画を選んでください。<br />
+        きれいな軌道を出すには<strong>スロー撮影（240fps など）推奨</strong>です。通常撮影でも読み込めますが、精度は落ちます。
+      </p>
+      <label class="file-btn">
+        <input type="file" id="file-input" accept="video/*" />
+        📹 動画ファイルを選択
+      </label>
+      <p class="filename" id="filename"></p>
+    </section>
+
+    <!-- 映像表示エリア -->
+    <section class="card hidden" id="step-stage">
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted preload="auto"></video>
+        <canvas id="overlay"></canvas>
+        <div class="tap-hint hidden" id="tap-hint">ボールの位置をタップしてください</div>
+      </div>
+
+      <div class="scrubber">
+        <input type="range" id="seek" min="0" max="100" value="0" step="0.1" />
+      </div>
+
+      <!-- STEP 2: ボール位置の指定 -->
+      <div class="control-block">
+        <h2><span class="step-no">2</span> ボールの位置を指定（任意・推奨）</h2>
+        <p class="hint">
+          スライダーでインパクト直後あたりまで進め、<strong>ボールをタップ</strong>して開始位置を教えると精度が上がります。指定しなくても自動検出を試みます。
+        </p>
+        <div class="btn-row">
+          <button id="btn-tap" class="btn btn-secondary">🎯 ボール位置をタップで指定</button>
+          <button id="btn-clear-seed" class="btn btn-ghost hidden">指定を消す</button>
+        </div>
+      </div>
+
+      <!-- STEP 3: 解析設定 -->
+      <div class="control-block">
+        <h2><span class="step-no">3</span> 感度を調整して解析</h2>
+        <label class="slider-label">
+          検出感度（動きの閾値）
+          <input type="range" id="sensitivity" min="10" max="60" value="28" />
+          <span id="sensitivity-val">28</span>
+        </label>
+        <div class="btn-row">
+          <button id="btn-analyze" class="btn btn-primary">🔍 解析して軌道を描く</button>
+        </div>
+        <div class="progress hidden" id="progress">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <p class="status" id="status"></p>
+      </div>
+
+      <!-- STEP 4: 書き出し・共有 -->
+      <div class="control-block hidden" id="export-block">
+        <h2><span class="step-no">4</span> 動画を書き出す・共有する</h2>
+        <p class="hint">軌道ラインを重ねた動画を、元の速さで書き出します。</p>
+        <div class="btn-row">
+          <button id="btn-replay" class="btn btn-secondary">▶ 軌道を再生</button>
+          <button id="btn-export" class="btn btn-primary">🎬 動画を書き出す</button>
+        </div>
+        <div class="progress hidden" id="export-progress">
+          <div class="progress-bar" id="export-progress-bar"></div>
+        </div>
+        <div class="btn-row hidden" id="result-block">
+          <a id="btn-download" class="btn btn-secondary" download>⬇ ダウンロード</a>
+          <button id="btn-share" class="btn btn-secondary">📤 共有</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card notes">
+      <h2>💡 うまく軌道を出すコツ</h2>
+      <ul>
+        <li>できれば <strong>スロー撮影（120/240fps）</strong> を使う</li>
+        <li>カメラは固定（三脚や置き撮り）し、手ブレを抑える</li>
+        <li>背景はできるだけ <strong>空や単色</strong>、順光（逆光を避ける）</li>
+        <li>ボールが画面内を長く飛ぶように、やや引き気味のアングルで撮る</li>
+        <li>動画はこのページ内（端末内）だけで処理され、サーバーには送られません</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>すべての処理は端末のブラウザ内で行われます。</p>
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
