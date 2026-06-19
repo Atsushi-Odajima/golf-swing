@@ -29,7 +29,21 @@ html, body {
   padding: 24px 16px 8px;
   background: linear-gradient(160deg, var(--green-deep), #0a2a20);
 }
-.app-header h1 { margin: 0; font-size: 1.5rem; }
+.app-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.app-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  display: block;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
 .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
 
 .container {

@@ -61,12 +61,16 @@ python3 -m http.server 8000
 ## ファイル構成
 
 ```
-index.html        画面
-css/styles.css    スタイル
-js/tracker.js     ボール検出・軌道追跡
-js/exporter.js    軌道入り動画の書き出し
-js/app.js         画面とロジックの接続
+index.html             画面
+css/styles.css         スタイル
+js/tracker.js          ボール検出・軌道追跡
+js/exporter.js         軌道入り動画の書き出し
+js/app.js              画面とロジックの接続
+manifest.webmanifest   PWA 設定（ホーム画面に追加）
+icons/                 アプリアイコン・favicon
 ```
+
+ホーム画面に追加（PWA）すると、アプリアイコンから全画面で起動できます。
 
 ## 制限・今後の改善余地
 
