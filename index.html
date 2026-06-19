@@ -57,13 +57,14 @@
 
       <!-- STEP 2: ボール位置の指定 -->
       <div class="control-block">
-        <h2><span class="step-no">2</span> ボールの位置を指定（強く推奨）</h2>
+        <h2><span class="step-no">2</span> ボールと飛ぶ方向を指定（強く推奨）</h2>
         <p class="hint">
-          スライダーで<strong>インパクト直前（アドレス）</strong>まで進め、<strong>静止しているボールをタップ</strong>してください。
-          開始位置に加えて<strong>ボールの色も学習</strong>するので、検出精度が大きく上がります。
+          スライダーで<strong>アドレス（インパクト直前）</strong>まで進め、ボタンを押してから<br />
+          <strong>①止まっているボールをタップ → ②ボールが飛んだ方向をタップ</strong>の順に2回タップしてください。<br />
+          開始位置・色・飛球方向を学習し、<strong>その方向の帯（コリドー）内だけ</strong>を探索するので精度が大きく上がります。
         </p>
         <div class="btn-row">
-          <button id="btn-tap" class="btn btn-secondary">🎯 ボールをタップで指定</button>
+          <button id="btn-tap" class="btn btn-secondary">🎯 ボールと方向をタップ</button>
           <button id="btn-clear-seed" class="btn btn-ghost hidden">指定を消す</button>
         </div>
         <label class="slider-label" style="margin-top:12px">
