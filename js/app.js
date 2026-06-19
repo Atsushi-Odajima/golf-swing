@@ -6,13 +6,13 @@ const $ = (id) => document.getElementById(id);
 const fileInput = $('file-input');
 const filenameEl = $('filename');
 const stageCard = $('step-stage');
-const stage = $('stage');
 const video = $('video');
 const overlay = $('overlay');
 const tapHint = $('tap-hint');
 const seek = $('seek');
 const btnTap = $('btn-tap');
 const btnClearSeed = $('btn-clear-seed');
+const ballColorSel = $('ball-color');
 const sensitivity = $('sensitivity');
 const sensitivityVal = $('sensitivity-val');
 const btnAnalyze = $('btn-analyze');
@@ -39,9 +39,9 @@ const pctx = procCanvas.getContext('2d', { willReadFrequently: true });
 const exportCanvas = document.createElement('canvas');
 
 // ---- state ----
-let tracker = new BallTracker();
+let tracker = null;
 let trajectory = [];      // cleaned points [{x,y,t}]
-let seed = null;          // normalized {x,y} ball start
+let seed = null;          // { x, y, t, color:{r,g,b} } ball launch point
 let tapMode = false;
 let analyzed = false;
 let lastBlob = null;
@@ -66,14 +66,27 @@ function sizeCanvases() {
   procCanvas.height = Math.round(h * scale);
 }
 
-// draw trajectory (+ seed marker) onto a context sized to the video frame.
-// if uptoTime is a number, only the part of the flight up to that time is drawn.
+// average colour of a small patch around a normalized point, from the
+// current video frame (used to learn the ball colour on tap).
+function sampleColor(nx, ny) {
+  const w = procCanvas.width, h = procCanvas.height;
+  pctx.drawImage(video, 0, 0, w, h);
+  const px = Math.round(nx * w), py = Math.round(ny * h);
+  const r = 2;
+  const x0 = Math.max(0, px - r), y0 = Math.max(0, py - r);
+  const sw = Math.min(w - x0, 2 * r + 1), sh = Math.min(h - y0, 2 * r + 1);
+  const d = pctx.getImageData(x0, y0, sw, sh).data;
+  let R = 0, G = 0, B = 0, c = 0;
+  for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; c++; }
+  return c ? { r: R / c, g: G / c, b: B / c } : null;
+}
+
+// draw trajectory (+ seed marker). uptoTime limits drawing to the growing arc.
 function drawOverlay(ctx, uptoTime = null) {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  // seed marker (before/after analysis)
   if (seed && !analyzed) {
     ctx.save();
     ctx.strokeStyle = '#ffd24a';
@@ -85,12 +98,10 @@ function drawOverlay(ctx, uptoTime = null) {
   }
 
   if (!trajectory.length) return;
-
   const pts = uptoTime == null
     ? trajectory
     : trajectory.filter((p) => p.t <= uptoTime + 1e-3);
   if (pts.length < 2) {
-    // still show the launch point dot
     if (pts.length === 1) drawBall(ctx, pts[0].x * w, pts[0].y * h, w);
     return;
   }
@@ -100,19 +111,13 @@ function drawOverlay(ctx, uptoTime = null) {
   ctx.lineCap = 'round';
   ctx.shadowColor = 'rgba(255,210,74,0.9)';
   ctx.shadowBlur = w * 0.012;
-
-  // outer glow
   ctx.strokeStyle = 'rgba(255,210,74,0.35)';
   ctx.lineWidth = Math.max(6, w * 0.012);
   strokePath(ctx, pts, w, h);
-
-  // core line
   ctx.shadowBlur = 0;
   ctx.strokeStyle = '#ffd24a';
   ctx.lineWidth = Math.max(2.5, w * 0.005);
   strokePath(ctx, pts, w, h);
-
-  // current ball position
   const last = pts[pts.length - 1];
   drawBall(ctx, last.x * w, last.y * h, w);
   ctx.restore();
@@ -122,7 +127,6 @@ function strokePath(ctx, pts, w, h) {
   ctx.beginPath();
   ctx.moveTo(pts[0].x * w, pts[0].y * h);
   for (let i = 1; i < pts.length; i++) {
-    // quadratic smoothing through midpoints
     const p0 = pts[i - 1], p1 = pts[i];
     const mx = (p0.x + p1.x) / 2 * w;
     const my = (p0.y + p1.y) / 2 * h;
@@ -155,9 +159,7 @@ fileInput.addEventListener('change', () => {
   const file = fileInput.files && fileInput.files[0];
   if (!file) return;
   filenameEl.textContent = file.name;
-  const baseName = file.name.replace(/\.[^.]+$/, '');
-  lastFilename = baseName + '-trajectory';
-
+  lastFilename = file.name.replace(/\.[^.]+$/, '') + '-trajectory';
   resetForNewVideo();
   video.src = URL.createObjectURL(file);
   video.load();
@@ -180,7 +182,6 @@ function resetForNewVideo() {
 video.addEventListener('loadedmetadata', () => {
   sizeCanvases();
   stageCard.classList.remove('hidden');
-  // show first frame
   video.currentTime = 0;
 });
 
@@ -198,7 +199,7 @@ video.addEventListener('timeupdate', () => {
 });
 video.addEventListener('seeked', redraw);
 
-// ---- tap to seed ball position ----
+// ---- tap to set the ball (launch position + time + colour) ----
 btnTap.addEventListener('click', () => {
   if (analyzed) return;
   tapMode = !tapMode;
@@ -209,10 +210,9 @@ btnTap.addEventListener('click', () => {
 overlay.addEventListener('pointerdown', (e) => {
   if (!tapMode) return;
   const rect = overlay.getBoundingClientRect();
-  seed = {
-    x: (e.clientX - rect.left) / rect.width,
-    y: (e.clientY - rect.top) / rect.height,
-  };
+  const x = (e.clientX - rect.left) / rect.width;
+  const y = (e.clientY - rect.top) / rect.height;
+  seed = { x, y, t: video.currentTime, color: sampleColor(x, y) };
   tapMode = false;
   btnTap.classList.remove('active');
   tapHint.classList.add('hidden');
@@ -286,10 +286,13 @@ btnAnalyze.addEventListener('click', async () => {
   resultBlock.classList.add('hidden');
   progress.classList.remove('hidden');
   progressBar.style.width = '0%';
-  setStatus('解析中… ボールを探しています');
+  setStatus('解析中… 手ブレ補正とボール検出をしています');
 
-  tracker = new BallTracker({ threshold: Number(sensitivity.value) });
-  tracker.reset(seed);
+  tracker = new BallTracker({
+    threshold: Number(sensitivity.value),
+    ballColor: seed ? seed.color : null,
+    colorHint: ballColorSel ? ballColorSel.value : 'auto',
+  });
 
   const pw = procCanvas.width;
   const ph = procCanvas.height;
@@ -299,23 +302,27 @@ btnAnalyze.addEventListener('click', async () => {
     await scanFrames((t) => {
       pctx.drawImage(video, 0, 0, pw, ph);
       const frame = pctx.getImageData(0, 0, pw, ph);
-      tracker.process(frame, t);
+      tracker.observe(frame, t);
       if (duration) progressBar.style.width = Math.min(100, (t / duration) * 100) + '%';
     });
 
-    trajectory = tracker.buildTrajectory();
+    const result = tracker.resolve({ seed });
+    trajectory = result.points;
     progressBar.style.width = '100%';
 
     if (trajectory.length >= 2) {
       analyzed = true;
-      setStatus(`軌道を検出しました（${trajectory.length} 点）。再生・書き出しできます。`, 'ok');
+      const impactMsg = result.impactT != null
+        ? `（インパクト検出: ${result.impactT.toFixed(2)}秒, 検出点 ${result.raw.length}）`
+        : '';
+      setStatus(`軌道を描きました ${impactMsg}。再生・書き出しできます。`, 'ok');
       exportBlock.classList.remove('hidden');
       video.currentTime = 0;
       redraw();
     } else {
       setStatus(
-        'ボールの軌道を十分に検出できませんでした。感度を上げ下げする、ボール位置をタップで指定する、' +
-        'またはスロー撮影の動画でお試しください。',
+        'ボールの軌道を十分に検出できませんでした。コツ: ①インパクト直前までスライダーで進めて' +
+        'ボールをタップ ②ボールの色を指定 ③感度を調整 ④できればスロー撮影。再度お試しください。',
         'error'
       );
     }

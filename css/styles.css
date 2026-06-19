@@ -149,6 +149,16 @@ h2 {
 }
 .slider-label input[type="range"] { flex: 1; min-width: 140px; }
 #sensitivity-val { min-width: 2ch; color: var(--text); font-weight: 600; }
+.slider-label select {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
 
 .btn-row {
   display: flex;
