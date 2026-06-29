@@ -31,8 +31,11 @@ const btnShare = $('btn-share');
 
 const octx = overlay.getContext('2d');
 
-// processing canvas (downscaled) for the CV analysis
-const PROC_MAX_W = 426;
+// processing canvas for the CV analysis. The golf ball is tiny, so we must
+// NOT downscale much or it vanishes (at 426px wide it was ~4px and undetectable;
+// it only becomes reliably detectable around 1280px+). Cap the longer side at
+// 1600px to keep the ball large while bounding compute.
+const PROC_MAX_DIM = 1600;
 const procCanvas = document.createElement('canvas');
 const pctx = procCanvas.getContext('2d', { willReadFrequently: true });
 
@@ -62,7 +65,7 @@ function sizeCanvases() {
   overlay.height = h;
   exportCanvas.width = w;
   exportCanvas.height = h;
-  const scale = Math.min(1, PROC_MAX_W / w);
+  const scale = Math.min(1, PROC_MAX_DIM / Math.max(w, h));
   procCanvas.width = Math.round(w * scale);
   procCanvas.height = Math.round(h * scale);
 }
@@ -296,7 +299,10 @@ sensitivity.addEventListener('input', () => {
 });
 
 // ---- frame iteration (low playback rate so high-fps frames are not skipped) ----
-const ANALYZE_RATE = 0.2;
+// kept very low because we now process at high resolution (heavier per frame);
+// a slower play-through means the compositor presents — and we capture — more
+// frames, so we don't miss the few frames where the fast ball is visible.
+const ANALYZE_RATE = 0.13;
 
 function scanFrames(onFrame) {
   return new Promise((resolve, reject) => {
