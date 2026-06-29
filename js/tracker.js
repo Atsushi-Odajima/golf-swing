@@ -223,21 +223,24 @@ export class BallTracker {
         lastPos = { x: best.x, y: best.y };
         lost = 0;
         chain.push({ x: best.x, y: best.y, t: f.t });
+        // "few frames + extrapolate": only the early detections (when the ball
+        // is biggest, near the club) are reliable. Stop once we have a handful
+        // and let the physics extrapolation draw the rest of the arc.
+        if (chain.length >= MAX_DETECTIONS) break;
       } else if (chain.length > 1) {
         if (++lost > 6) break;
       }
     }
 
-    // 4. fit a parabola for a clean arc
+    // 4. build the arc: fit the few detected points, then extrapolate forward
     const raw = chain.slice();
-    let points = chain;
-    if (chain.length >= 3) {
-      const fitted = fitCurve(chain);
-      if (fitted) points = fitted;
-    }
+    const points = chain.length >= 3 ? buildCurve(chain) : chain;
     return { points, impactT, raw };
   }
 }
+
+// number of early ball detections to trust before switching to extrapolation
+const MAX_DETECTIONS = 9;
 
 // ---- ball-colour classification --------------------------------------------
 
@@ -302,17 +305,33 @@ function estimateShift(cur, prev, w, h, R) {
   return { dx: bestDx, dy: bestDy };
 }
 
-// ---- parabola fitting (RANSAC) ---------------------------------------------
+// ---- curve fitting + extrapolation -----------------------------------------
+
+// derivative of a polynomial (coeffs c0 + c1 u + c2 u^2 + ...) at u
+function polyderiv(c, u) {
+  let r = 0, up = 1;
+  for (let i = 1; i < c.length; i++) { r += i * c[i] * up; up *= u; }
+  return r;
+}
 
 // fit x linear in time and y quadratic in time (gravity), robust to outliers.
-function fitCurve(points) {
+// returns { cx, cy, t0, uMax } or null.
+function ransacFit(points) {
   const t0 = points[0].t;
   const us = points.map((p) => p.t - t0);
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
   const n = points.length;
-  const tol = 0.05;
 
+  if (n < 3) {
+    // too few points for RANSAC: simple linear fit of both x and y
+    const cx = polyfit(us, xs, 1);
+    const cy = polyfit(us, ys, 1);
+    if (!cx || !cy) return null;
+    return { cx, cy, t0, uMax: Math.max(...us) };
+  }
+
+  const tol = 0.05;
   let bestInliers = null;
   const iters = Math.min(300, Math.max(40, n * n));
   for (let it = 0; it < iters; it++) {
@@ -335,13 +354,41 @@ function fitCurve(points) {
   const cx = polyfit(iu, bestInliers.map((i) => xs[i]), 1);
   const cy = polyfit(iu, bestInliers.map((i) => ys[i]), 2);
   if (!cx || !cy) return null;
+  return { cx, cy, t0, uMax: Math.max(...us) };
+}
 
-  const uMax = Math.max(...us);
+// Fit the few detected points, then EXTRAPOLATE the arc forward with the
+// estimated velocity + a gentle gravity, until it leaves the frame. This lets
+// us draw a full trajectory even when the ball is only visible for a moment.
+function buildCurve(points) {
+  const fit = ransacFit(points);
+  if (!fit) return points;
+  const { cx, cy, t0, uMax } = fit;
+
   const out = [];
-  const N = 90;
+  const N = 50;
+  const du = (uMax / N) || 0.01;
+
+  // observed portion (matches the detected points)
   for (let k = 0; k <= N; k++) {
-    const u = (uMax * k) / N;
+    const u = du * k;
     out.push({ x: polyval(cx, u), y: polyval(cy, u), t: t0 + u });
+  }
+
+  // extrapolated portion: continue from the end tangent with gentle downward
+  // curvature (gravity), stepping until the ball leaves the frame.
+  let u = uMax;
+  let px = polyval(cx, u), py = polyval(cy, u);
+  let vx = polyderiv(cx, u) * du;     // per-step velocity
+  let vy = polyderiv(cy, u) * du;
+  const speed = Math.hypot(vx, vy);
+  const g = speed * 0.04;             // gentle, proportional downward pull
+  const maxSteps = N * 4;
+  for (let s = 1; s <= maxSteps; s++) {
+    vy += g;
+    px += vx; py += vy; u += du;
+    if (px < -0.05 || px > 1.05 || py < -0.05 || py > 1.08) break;
+    out.push({ x: px, y: py, t: t0 + u });
   }
   return out;
 }
