@@ -367,7 +367,12 @@ btnAnalyze.addEventListener('click', async () => {
           onProgress: (p) => { progressBar.style.width = (p * 50).toFixed(0) + '%'; },
         });
         if (det) {
-          activeSeed = { x: det.launch.x, y: det.launch.y, t: det.impactT, color: null, bg: null, aim: null };
+          // AI found the golfer + (ideally) the ball at the club. Use the ball's
+          // position and learned colour as the launch anchor.
+          activeSeed = {
+            x: det.launch.x, y: det.launch.y, t: det.impactT,
+            color: det.ballColor || null, bg: null, aim: null,
+          };
           usedAI = true;
         }
       } catch (_e) { /* fall back below */ }
