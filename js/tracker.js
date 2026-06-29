@@ -207,6 +207,10 @@ export class BallTracker {
       let best = null, bestScore = Infinity;
       for (const b of f.blobs) {
         if (!inCorridor(b)) continue;
+        // hard colour gate: if we learned the ball's colour, only follow blobs
+        // that actually match it. This stops the body/club/grass from being
+        // chained into a bogus line.
+        if (ballColor && colorDist(b, ballColor) > 110) continue;
         const along = (b.x - launch.x) * D.x + (b.y - launch.y) * D.y;
         if (vel && along < lastAlong - 0.02) continue; // keep travelling outward
         const dist = Math.hypot(b.x - predicted.x, b.y - predicted.y);

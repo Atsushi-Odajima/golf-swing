@@ -395,24 +395,35 @@ btnAnalyze.addEventListener('click', async () => {
     });
 
     const result = tracker.resolve({ seed: activeSeed });
-    trajectory = result.points;
     progressBar.style.width = '100%';
 
-    if (trajectory.length >= 2) {
+    const haveBallAnchor = !!(activeSeed && activeSeed.color);
+    // only accept a trajectory backed by real, colour-matched ball detections
+    // (raw includes the launch point, so >=3 means at least 2 tracked positions)
+    const enoughDetections = result.raw.length >= 3;
+
+    if (haveBallAnchor && enoughDetections && result.points.length >= 2) {
+      trajectory = result.points;
       analyzed = true;
-      const how = usedAI ? 'AI自動検出' : (activeSeed ? '手動指定' : '自動');
-      const impactMsg = result.impactT != null
-        ? `（${how} / インパクト ${result.impactT.toFixed(2)}秒 / 検出点 ${result.raw.length}）`
-        : '';
-      setStatus(`軌道を描きました ${impactMsg}。再生・書き出しできます。`, 'ok');
+      const how = usedAI ? 'AI自動検出' : '手動指定';
+      setStatus(
+        `軌道を描きました（${how} / インパクト ${result.impactT.toFixed(2)}秒 / 検出点 ${result.raw.length}）。`,
+        'ok',
+      );
       exportBlock.classList.remove('hidden');
       video.currentTime = 0;
       redraw();
+    } else if (usedAI && !haveBallAnchor) {
+      setStatus(
+        'AIはゴルファーを検出しましたが、ボールを特定できませんでした。' +
+        '①手動で「ボールと方向をタップ」する、または②ボールが空を横切る構図（カメラを低く上向き）で撮り直すと改善します。',
+        'error',
+      );
     } else {
       setStatus(
-        'ボールの軌道を十分に検出できませんでした。コツ: ①できれば240fpsスロー撮影 ' +
-        '②ボールの色を指定 ③感度を調整 ④必要なら手動でボールと方向をタップ。再度お試しください。',
-        'error'
+        '打った後のボールを十分に追えませんでした（背景に溶け込んで見えていない可能性）。' +
+        'ボールが空を横切る構図での撮影、または手動タップをお試しください。',
+        'error',
       );
     }
   } catch (err) {
