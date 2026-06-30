@@ -95,6 +95,22 @@
         <p class="status" id="status"></p>
       </div>
 
+      <!-- 手動トレース（確実に出せる） -->
+      <div class="control-block">
+        <h2><span class="step-no">✏️</span> 手動トレース（確実）</h2>
+        <p class="hint">
+          自動でうまく出ない時はこちら。<strong>スライダーでボールが見える位置へ進め、ボールをタップ</strong>。
+          飛んでいくボールを<strong>3〜6コマ</strong>タップすると、なめらかな軌道線を描きます。順番は飛んだ順（手前→奥）で。
+        </p>
+        <div class="btn-row">
+          <button id="btn-trace" class="btn btn-secondary">✏️ 手動トレース開始</button>
+          <button id="btn-trace-undo" class="btn btn-ghost hidden">1点戻す</button>
+          <button id="btn-trace-clear" class="btn btn-ghost hidden">クリア</button>
+          <button id="btn-trace-done" class="btn btn-primary hidden">軌道を確定</button>
+        </div>
+        <p class="status" id="trace-status"></p>
+      </div>
+
       <!-- STEP 4: 書き出し・共有 -->
       <div class="control-block hidden" id="export-block">
         <h2><span class="step-no">4</span> 動画を書き出す・共有する</h2>
