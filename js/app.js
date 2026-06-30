@@ -28,6 +28,11 @@ const exportProgressBar = $('export-progress-bar');
 const resultBlock = $('result-block');
 const btnDownload = $('btn-download');
 const btnShare = $('btn-share');
+const btnTrace = $('btn-trace');
+const btnTraceUndo = $('btn-trace-undo');
+const btnTraceClear = $('btn-trace-clear');
+const btnTraceDone = $('btn-trace-done');
+const traceStatus = $('trace-status');
 
 const octx = overlay.getContext('2d');
 
@@ -51,6 +56,10 @@ let analyzed = false;
 let lastBlob = null;
 let lastFilename = 'golf-trajectory.mp4';
 let busy = false;
+
+// manual trace mode
+let traceMode = false;
+let tracePoints = []; // [{x,y,t}] taps along the ball flight
 
 // ---- helpers ----
 function setStatus(msg, kind = '') {
@@ -201,8 +210,128 @@ function drawBall(ctx, x, y, w) {
 }
 
 function redraw() {
+  if (traceMode || (tracePoints.length && !analyzed)) { drawTracePreview(); return; }
   drawOverlay(octx, analyzed ? video.currentTime : null);
 }
+
+// ---- manual trace: tap the ball on a few frames, fit a smooth arc ----
+function drawTracePreview() {
+  const w = overlay.width, h = overlay.height;
+  octx.clearRect(0, 0, w, h);
+  // tapped points
+  for (let i = 0; i < tracePoints.length; i++) {
+    const p = tracePoints[i];
+    octx.save();
+    octx.fillStyle = '#3fd0ff';
+    octx.strokeStyle = '#ffffff';
+    octx.lineWidth = Math.max(1.5, w * 0.003);
+    octx.beginPath();
+    octx.arc(p.x * w, p.y * h, Math.max(4, w * 0.008), 0, Math.PI * 2);
+    octx.fill(); octx.stroke();
+    octx.restore();
+  }
+  // preview curve
+  if (tracePoints.length >= 2) {
+    const curve = fitTrace();
+    if (curve.length >= 2) {
+      octx.save();
+      octx.strokeStyle = '#ffd24a';
+      octx.lineWidth = Math.max(2.5, w * 0.005);
+      octx.lineJoin = 'round'; octx.lineCap = 'round';
+      octx.beginPath();
+      octx.moveTo(curve[0].x * w, curve[0].y * h);
+      for (let i = 1; i < curve.length; i++) octx.lineTo(curve[i].x * w, curve[i].y * h);
+      octx.stroke();
+      octx.restore();
+    }
+  }
+}
+
+// fit x linear / y quadratic (parabola) through the tapped points, sample dense.
+function fitTrace() {
+  const pts = tracePoints.slice().sort((a, b) => a.t - b.t);
+  const t0 = pts[0].t;
+  const us = pts.map((p) => p.t - t0);
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  const cx = polyfit(us, xs, 1);
+  const cy = polyfit(us, ys, pts.length >= 3 ? 2 : 1);
+  if (!cx || !cy) return pts.map((p) => ({ x: p.x, y: p.y, t: p.t }));
+  const uMax = us[us.length - 1] || 0.01;
+  const out = [];
+  const N = 80;
+  for (let k = 0; k <= N; k++) {
+    const u = (uMax * k) / N;
+    out.push({ x: polyval(cx, u), y: polyval(cy, u), t: t0 + u });
+  }
+  return out;
+}
+
+function polyval(c, u) { let r = 0, up = 1; for (let i = 0; i < c.length; i++) { r += c[i] * up; up *= u; } return r; }
+function polyfit(us, vs, deg) {
+  const m = deg + 1;
+  const sp = new Array(2 * deg + 1).fill(0);
+  const sv = new Array(m).fill(0);
+  for (let k = 0; k < us.length; k++) {
+    let up = 1; const u = us[k], v = vs[k];
+    for (let p = 0; p <= 2 * deg; p++) { sp[p] += up; up *= u; }
+    up = 1; for (let i = 0; i < m; i++) { sv[i] += v * up; up *= u; }
+  }
+  const A = []; for (let i = 0; i < m; i++) { A.push([]); for (let j = 0; j < m; j++) A[i].push(sp[i + j]); }
+  // gaussian elimination
+  for (let c = 0; c < m; c++) {
+    let piv = c;
+    for (let r = c + 1; r < m; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    if (Math.abs(A[piv][c]) < 1e-12) return null;
+    [A[c], A[piv]] = [A[piv], A[c]]; [sv[c], sv[piv]] = [sv[piv], sv[c]];
+    for (let r = 0; r < m; r++) {
+      if (r === c) continue;
+      const f = A[r][c] / A[c][c];
+      for (let k = c; k < m; k++) A[r][k] -= f * A[c][k];
+      sv[r] -= f * sv[c];
+    }
+  }
+  return sv.map((v, i) => v / A[i][i]);
+}
+
+function updateTraceUI() {
+  btnTrace.textContent = traceMode ? '⏹ トレース終了' : '✏️ 手動トレース開始';
+  btnTrace.classList.toggle('active', traceMode);
+  const has = tracePoints.length > 0;
+  btnTraceUndo.classList.toggle('hidden', !traceMode || !has);
+  btnTraceClear.classList.toggle('hidden', !traceMode || !has);
+  btnTraceDone.classList.toggle('hidden', !traceMode || tracePoints.length < 2);
+  if (traceMode) {
+    traceStatus.textContent = `タップ ${tracePoints.length} 点（スライダーでコマを進めながらボールをタップ。2点以上で確定可）`;
+  }
+}
+
+btnTrace.addEventListener('click', () => {
+  traceMode = !traceMode;
+  if (traceMode) {
+    analyzed = false;
+    trajectory = [];
+    exportBlock.classList.add('hidden');
+    setStatus('');
+  }
+  updateTraceUI();
+  redraw();
+});
+
+btnTraceUndo.addEventListener('click', () => { tracePoints.pop(); updateTraceUI(); redraw(); });
+btnTraceClear.addEventListener('click', () => { tracePoints = []; updateTraceUI(); redraw(); });
+
+btnTraceDone.addEventListener('click', () => {
+  if (tracePoints.length < 2) return;
+  trajectory = fitTrace();
+  analyzed = true;
+  traceMode = false;
+  updateTraceUI();
+  traceStatus.textContent = `軌道を確定しました（${tracePoints.length} 点）。`;
+  exportBlock.classList.remove('hidden');
+  video.currentTime = 0;
+  redraw();
+});
 
 // ---- file loading ----
 fileInput.addEventListener('change', () => {
@@ -264,10 +393,19 @@ btnTap.addEventListener('click', () => {
 });
 
 overlay.addEventListener('pointerdown', (e) => {
-  if (tapStage === 'idle' || analyzed) return;
   const rect = overlay.getBoundingClientRect();
   const x = (e.clientX - rect.left) / rect.width;
   const y = (e.clientY - rect.top) / rect.height;
+
+  // manual trace mode takes precedence: record a tap on the ball
+  if (traceMode) {
+    tracePoints.push({ x, y, t: video.currentTime });
+    updateTraceUI();
+    redraw();
+    return;
+  }
+
+  if (tapStage === 'idle' || analyzed) return;
 
   if (tapStage === 'ball') {
     const c = learnColors(x, y);
